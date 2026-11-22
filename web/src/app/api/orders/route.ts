@@ -160,12 +160,12 @@ function writeLocalOrders(orders: PrintOrder[]) {
 }
 
 // Timeout wrapper so that slow cloud network calls never freeze UI or local polling
-async function withTimeout<T>(promise: Promise<T>, timeoutMs = 1200): Promise<T> {
+async function withTimeout<T = any>(promise: Promise<T> | PromiseLike<T>, timeoutMs = 1200): Promise<T> {
   let timeoutHandle: NodeJS.Timeout;
   const timeoutPromise = new Promise<T>((_, reject) => {
     timeoutHandle = setTimeout(() => reject(new Error('Cloud DB timeout')), timeoutMs);
   });
-  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutHandle));
+  return Promise.race([Promise.resolve(promise), timeoutPromise]).finally(() => clearTimeout(timeoutHandle));
 }
 
 // GET: Retrieve all orders or a single order by ID
@@ -185,10 +185,10 @@ export async function GET(request: NextRequest) {
     if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
       try {
         const admin = createAdminClient();
-        const { data, error } = await withTimeout(
+        const res: any = await withTimeout(
           admin.from('print_orders').select('*, items:print_order_items(*)').eq('id', id).single()
         );
-        if (!error && data) return NextResponse.json(data);
+        if (!res?.error && res?.data) return NextResponse.json(res.data);
       } catch {}
     }
 
@@ -201,9 +201,11 @@ export async function GET(request: NextRequest) {
   if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
     try {
       const admin = createAdminClient();
-      const { data, error } = await withTimeout(
+      const res: any = await withTimeout(
         admin.from('print_orders').select('*, items:print_order_items(*)').order('created_at', { ascending: false })
       );
+      const data = res?.data;
+      const error = res?.error;
       if (!error && Array.isArray(data) && data.length > 0) {
         // Smart merge: Keep local orders (such as status updates and newly placed orders like #106)
         const localMap = new Map(localOrders.map(o => [o.id, o]));
