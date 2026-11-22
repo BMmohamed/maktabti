@@ -20,7 +20,13 @@ import {
   Lock,
   ArrowRight,
   Palette,
-  Edit2
+  Edit2,
+  Database,
+  Wifi,
+  WifiOff,
+  Activity,
+  Server,
+  AlertTriangle
 } from 'lucide-react';
 import { Tenant, AppModuleKey, TenantPlan, BackgroundTheme } from '@/types';
 import { getAllModules } from '@/lib/modules';
@@ -42,6 +48,23 @@ const THEME_OPTIONS: { key: BackgroundTheme; name: string; desc: string }[] = [
   { key: 'custom', name: 'صورة مخصصة', desc: 'رفع رابط صورة خلفية خاصة' },
 ];
 
+export interface SupabaseStatusData {
+  status: 'connected' | 'blocked' | 'error' | 'unconfigured';
+  connected: boolean;
+  message: string;
+  details?: {
+    supabaseUrl?: string | null;
+    tenantsFound?: number;
+    hasServiceKey?: boolean;
+    hasAnonKey?: boolean;
+    errorCode?: string;
+    errorMessage?: string;
+    httpStatus?: number;
+  };
+  latencyMs?: number | null;
+  timestamp?: string;
+}
+
 export default function SuperAdminPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +73,10 @@ export default function SuperAdminPage() {
   const [editingBrandingTenant, setEditingBrandingTenant] = useState<Tenant | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Supabase Cloud Connection Status State
+  const [supabaseStatus, setSupabaseStatus] = useState<SupabaseStatusData | null>(null);
+  const [checkingSupabase, setCheckingSupabase] = useState(false);
 
   // New Tenant Form State
   const [newName, setNewName] = useState('');
@@ -88,8 +115,26 @@ export default function SuperAdminPage() {
     }
   };
 
+  const checkSupabaseHealth = async () => {
+    try {
+      setCheckingSupabase(true);
+      const res = await fetch('/api/system/supabase-status');
+      const data = await res.json();
+      setSupabaseStatus(data);
+    } catch (err: any) {
+      setSupabaseStatus({
+        status: 'blocked',
+        connected: false,
+        message: 'تعذر الاتصال بالخادم المحلي أو خدمة Supabase: ' + (err?.message || 'Network Error'),
+      });
+    } finally {
+      setCheckingSupabase(false);
+    }
+  };
+
   useEffect(() => {
     fetchTenants();
+    checkSupabaseHealth();
   }, []);
 
   const showToast = (msg: string) => {
@@ -309,6 +354,181 @@ export default function SuperAdminPage() {
             <p className="text-3xl font-black text-indigo-400 mt-1">3</p>
             <span className="text-[11px] text-slate-400 mt-1 block">طباعة ذكية • مكتبة متكاملة • سلاسل ومؤسسات</span>
           </div>
+        </div>
+
+        {/* Supabase Cloud Connection & Security Status Card */}
+        <div className={`rounded-3xl border p-6 shadow-xl transition-all ${
+          !supabaseStatus || checkingSupabase
+            ? 'bg-slate-850/80 border-slate-700'
+            : supabaseStatus.connected
+            ? 'bg-gradient-to-b from-slate-800/90 to-slate-900 border-emerald-500/30 ring-1 ring-emerald-500/20'
+            : supabaseStatus.status === 'blocked'
+            ? 'bg-gradient-to-b from-slate-900 to-rose-950/20 border-rose-500/40 ring-1 ring-rose-500/20'
+            : 'bg-gradient-to-b from-slate-900 to-amber-950/20 border-amber-500/40 ring-1 ring-amber-500/20'
+        }`}>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-700/60">
+            <div className="flex items-center gap-3.5">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0 ${
+                !supabaseStatus || checkingSupabase
+                  ? 'bg-slate-700'
+                  : supabaseStatus.connected
+                  ? 'bg-gradient-to-tr from-emerald-600 to-teal-500 shadow-emerald-500/20'
+                  : supabaseStatus.status === 'blocked'
+                  ? 'bg-gradient-to-tr from-rose-600 to-red-700 shadow-rose-500/20'
+                  : 'bg-gradient-to-tr from-amber-600 to-orange-500 shadow-amber-500/20'
+              }`}>
+                {supabaseStatus?.connected ? (
+                  <Database className="w-6 h-6 text-white" />
+                ) : supabaseStatus?.status === 'blocked' ? (
+                  <WifiOff className="w-6 h-6 text-white" />
+                ) : (
+                  <Activity className="w-6 h-6 text-white" />
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h3 className="text-base font-black text-white">
+                    حالة الاتصال بمنصة سوبا بيس (Supabase Cloud)
+                  </h3>
+                  {checkingSupabase ? (
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-slate-600 animate-pulse flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-slate-400 animate-ping" />
+                      جاري فحص الاتصال...
+                    </span>
+                  ) : supabaseStatus?.connected ? (
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      متصل ومستقر (Active 200 OK)
+                    </span>
+                  ) : supabaseStatus?.status === 'blocked' ? (
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                      الاتصال محظور / مرفوض (Blocked 401/403)
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      المفاتيح غير مكتملة (Unconfigured)
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  مراقبة حية لصحة الاتصال السحابي، زمن الاستجابة (Latency)، وصلاحية مفاتيح قاعدة البيانات
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={checkSupabaseHealth}
+                disabled={checkingSupabase}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-xs font-bold text-slate-200 transition-colors flex items-center gap-2 border border-slate-700"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${checkingSupabase ? 'animate-spin text-brand-400' : ''}`} />
+                <span>إعادة فحص الاتصال</span>
+              </button>
+
+              <a
+                href="https://supabase.com/dashboard"
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-bold text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 border border-slate-700"
+              >
+                <span>لوحة Supabase</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+
+          {/* Details & Metrics Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5">
+            <div className="bg-slate-900/70 border border-slate-800 p-3.5 rounded-2xl">
+              <span className="text-[11px] text-slate-400 block font-medium">نطاق الخادم السحابي</span>
+              <p className="text-xs font-mono font-bold text-slate-200 mt-1 truncate" title={supabaseStatus?.details?.supabaseUrl || '---'}>
+                {supabaseStatus?.details?.supabaseUrl || 'غير مربوط'}
+              </p>
+            </div>
+
+            <div className="bg-slate-900/70 border border-slate-800 p-3.5 rounded-2xl">
+              <span className="text-[11px] text-slate-400 block font-medium">سرعة الاستجابة (Latency)</span>
+              <div className="flex items-center gap-1.5 mt-1">
+                <p className="text-sm font-black text-white">
+                  {supabaseStatus?.latencyMs !== null && supabaseStatus?.latencyMs !== undefined
+                    ? `${supabaseStatus.latencyMs} ms`
+                    : '---'}
+                </p>
+                {supabaseStatus?.latencyMs && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                    supabaseStatus.latencyMs < 500 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                  }`}>
+                    {supabaseStatus.latencyMs < 500 ? 'سريع' : 'عادي'}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-slate-900/70 border border-slate-800 p-3.5 rounded-2xl">
+              <span className="text-[11px] text-slate-400 block font-medium">المفتاح السري (Service Key)</span>
+              <p className="text-xs font-bold mt-1 flex items-center gap-1.5">
+                {supabaseStatus?.details?.hasServiceKey ? (
+                  <span className="text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> مفعّل ومشفر
+                  </span>
+                ) : (
+                  <span className="text-rose-400 flex items-center gap-1">
+                    <X className="w-3.5 h-3.5" /> غير متوفر
+                  </span>
+                )}
+              </p>
+            </div>
+
+            <div className="bg-slate-900/70 border border-slate-800 p-3.5 rounded-2xl">
+              <span className="text-[11px] text-slate-400 block font-medium">المفتاح العام (Anon Key)</span>
+              <p className="text-xs font-bold mt-1 flex items-center gap-1.5">
+                {supabaseStatus?.details?.hasAnonKey ? (
+                  <span className="text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> مفعّل بالواجهة
+                  </span>
+                ) : (
+                  <span className="text-rose-400 flex items-center gap-1">
+                    <X className="w-3.5 h-3.5" /> غير متوفر
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Alert / Diagnostic Message Box */}
+          {supabaseStatus && (
+            <div className={`mt-4 p-3.5 rounded-2xl text-xs flex items-start gap-2.5 ${
+              supabaseStatus.connected
+                ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
+                : supabaseStatus.status === 'blocked'
+                ? 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+                : 'bg-amber-500/10 border border-amber-500/30 text-amber-300'
+            }`}>
+              {supabaseStatus.connected ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              ) : supabaseStatus.status === 'blocked' ? (
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              )}
+              <div className="space-y-0.5">
+                <p className="font-bold">{supabaseStatus.message}</p>
+                {supabaseStatus.details?.errorMessage && (
+                  <p className="text-[11px] opacity-80 font-mono mt-1">
+                    تفاصيل الخطأ التقني: {supabaseStatus.details.errorMessage}
+                  </p>
+                )}
+                {supabaseStatus.status === 'blocked' && (
+                  <p className="text-[11px] text-rose-200 mt-1">
+                    💡 نصيحة: يرجى التأكد من تطابق مفاتيح `NEXT_PUBLIC_SUPABASE_ANON_KEY` و `SUPABASE_SERVICE_ROLE_KEY` مع المفاتيح الموجودة في لوحة تحكم Supabase، ثم إعادة النشر (Redeploy) على Vercel.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Libraries & Modules Matrix Header */}
