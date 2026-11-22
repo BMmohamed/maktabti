@@ -11,6 +11,7 @@ import { OrderStatusBadge, PaymentStatusBadge } from '@/components/OrderStatusBa
 import { formatCurrency, buildWhatsAppPickupLink } from '@/lib/utils';
 import { playNotificationSound } from '@/lib/sound';
 import { ModuleRouteGuard } from '@/components/ModuleRouteGuard';
+import { createClient } from '@/lib/supabase/client';
 
 export default function DashboardOrdersPage() {
   const [orders, setOrders] = useState<PrintOrder[]>([]);
@@ -18,23 +19,37 @@ export default function DashboardOrdersPage() {
   const [autoPrintMode, setAutoPrintMode] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [activeFilter, setActiveFilter] = useState<'pending' | 'completed' | 'all'>('pending');
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // Sham Cash Receipt Modal state
   const [selectedReceiptUrl, setSelectedReceiptUrl] = useState<string | null>(null);
   const [receiptModalOrderId, setReceiptModalOrderId] = useState<string | null>(null);
 
-  // Fetch orders from persistent API
+  // Fetch orders directly from Supabase (Strict No-Cache)
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await fetch('/api/orders');
+      const res = await fetch('/api/orders', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store',
+          'Pragma': 'no-cache',
+        },
+      });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
           setOrders(data);
+          setApiError(null);
         }
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        const msg = errJson.error || `خطأ استجابة السيرفر (${res.status})`;
+        console.error('Error fetching orders:', msg, errJson);
+        setApiError(msg);
       }
-    } catch (e) {
-      console.error('Error fetching orders:', e);
+    } catch (e: any) {
+      console.error('Network error fetching orders:', e);
+      setApiError(e?.message || 'تعذر الاتصال بالخادم');
     } finally {
       setLoading(false);
     }
@@ -43,31 +58,40 @@ export default function DashboardOrdersPage() {
   useEffect(() => {
     fetchOrders();
 
-    // 1. Cross-tab instant communication via BroadcastChannel
-    let bc: BroadcastChannel | null = null;
+    // 1. Supabase Realtime Subscription across all devices
+    let channel: any = null;
     try {
-      bc = new BroadcastChannel('mktabati_orders');
-      bc.onmessage = (event) => {
-        if (event.data?.type === 'NEW_ORDER' && event.data.order) {
-          const newOrder = event.data.order as PrintOrder;
-          setOrders((prev) => {
-            if (prev.some((o) => o.id === newOrder.id)) return prev;
-            return [newOrder, ...prev];
-          });
-          if (soundEnabled) {
-            playNotificationSound();
+      const supabase = createClient();
+      channel = supabase
+        .channel('realtime_dashboard_orders')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'print_orders' },
+          (payload) => {
+            console.log('Realtime change from Supabase:', payload);
+            if (payload.eventType === 'INSERT' && soundEnabled) {
+              playNotificationSound();
+            }
+            fetchOrders();
           }
-        }
-      };
-    } catch {}
+        )
+        .subscribe();
+    } catch (e) {
+      console.warn('Realtime subscription error:', e);
+    }
 
-    // 2. High-frequency polling (every 3 seconds) for guaranteed updates
+    // 2. High-frequency non-cached polling as guaranteed fallback
     const interval = setInterval(() => {
       fetchOrders();
     }, 3000);
 
     return () => {
-      if (bc) bc.close();
+      if (channel) {
+        try {
+          const supabase = createClient();
+          supabase.removeChannel(channel);
+        } catch {}
+      }
       clearInterval(interval);
     };
   }, [fetchOrders, soundEnabled]);
@@ -77,13 +101,15 @@ export default function DashboardOrdersPage() {
     const updatedStatus: OrderStatus = 'completed';
     const updatedPayment: PaymentStatus = order.payment_status === 'receipt_uploaded' ? 'verified' : order.payment_status;
 
+    // Optimistic UI update
     setOrders((prev) =>
       prev.map((o) => (o.id === order.id ? { ...o, status: updatedStatus, payment_status: updatedPayment } : o))
     );
 
     try {
-      await fetch('/api/orders', {
+      const res = await fetch('/api/orders', {
         method: 'PATCH',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           id: order.id, 
@@ -93,19 +119,18 @@ export default function DashboardOrdersPage() {
         }),
       });
 
-      try {
-        const bc = new BroadcastChannel('mktabati_orders');
-        bc.postMessage({ type: 'ORDER_UPDATED', orderId: order.id, status: updatedStatus });
-        bc.close();
-      } catch {}
-    } catch (err) {
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `فشل تحديث الطلب في Supabase (${res.status})`);
+      }
+    } catch (err: any) {
       console.error('Error updating order:', err);
+      alert(`خطأ Supabase: ${err.message}`);
+      fetchOrders();
     }
   };
 
   // Emergency Action: "تأكيد يدوي"
-  // Used only if the Python agent is offline or printer had an issue and staff printed manually.
-  // Updates status to Stage 2 and records into Anti-Leakage Audit normally!
   const handleManualEmergencyConfirm = async (order: PrintOrder) => {
     if (!confirm(`هل قمت بطباعة الطلب #${order.daily_order_code} يدوياً وتريد اعتماده وتسجيله في عداد الأوراق؟`)) {
       return;
@@ -119,8 +144,9 @@ export default function DashboardOrdersPage() {
     );
 
     try {
-      await fetch('/api/orders', {
+      const res = await fetch('/api/orders', {
         method: 'PATCH',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           id: order.id, 
@@ -131,13 +157,14 @@ export default function DashboardOrdersPage() {
         }),
       });
 
-      try {
-        const bc = new BroadcastChannel('mktabati_orders');
-        bc.postMessage({ type: 'ORDER_UPDATED', orderId: order.id, status: updatedStatus });
-        bc.close();
-      } catch {}
-    } catch (err) {
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `فشل تحديث الطلب في Supabase (${res.status})`);
+      }
+    } catch (err: any) {
       console.error('Error in emergency confirm:', err);
+      alert(`خطأ Supabase: ${err.message}`);
+      fetchOrders();
     }
   };
 
@@ -170,7 +197,26 @@ export default function DashboardOrdersPage() {
   return (
     <ModuleRouteGuard moduleKey="smart_print">
       <div className="space-y-6">
-      {/* Top Controls Header */}
+        {/* Supabase Error Alert Banner */}
+        {apiError && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-2xl flex items-center justify-between gap-3 text-xs font-bold shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+              <div>
+                <span className="block font-black">خطأ في مزامنة قاعدة بيانات Supabase:</span>
+                <span className="font-mono text-[11px] text-rose-700">{apiError}</span>
+              </div>
+            </div>
+            <button
+              onClick={fetchOrders}
+              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-colors shrink-0"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
+
+        {/* Top Controls Header */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-black text-slate-900 flex items-center gap-2.5">

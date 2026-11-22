@@ -385,24 +385,24 @@ export default function PrintOrderWizardPage() {
 
       const res = await fetch('/api/orders', {
         method: 'POST',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      const newOrder = await res.json();
-      const createdOrderId = newOrder.id || `demo-${Date.now()}`;
-      const dailyCode = newOrder.daily_order_code || 105;
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `فشل حفظ الطلب في Supabase (${res.status})`);
+      }
 
-      try {
-        const bc = new BroadcastChannel('mktabati_orders');
-        bc.postMessage({ type: 'NEW_ORDER', order: newOrder });
-        bc.close();
-      } catch {}
+      const newOrder = await res.json();
+      const createdOrderId = newOrder.id;
+      const dailyCode = newOrder.daily_order_code;
 
       router.push(`/${tenantSlug}/${branchSlug}/order/${createdOrderId}?code=${dailyCode}`);
-    } catch (err: unknown) {
+    } catch (err: any) {
       console.error('Order submission error:', err);
-      setSubmitError('حدث خطأ أثناء إرسال الطلب. يرجى المحاولة مجدداً.');
+      setSubmitError(err?.message || 'حدث خطأ أثناء إرسال الطلب إلى السحابة. يرجى المحاولة مجدداً.');
     } finally {
       setIsSubmitting(false);
     }

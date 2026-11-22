@@ -11,6 +11,7 @@ import { OrderStatusBadge, PaymentStatusBadge } from '@/components/OrderStatusBa
 import { PrintOrder, OrderStatus } from '@/types';
 import { formatCurrency, convertCurrency } from '@/lib/utils';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 
 export default function OrderTrackingPage() {
   const params = useParams();
@@ -22,51 +23,27 @@ export default function OrderTrackingPage() {
 
   const [order, setOrder] = useState<PrintOrder | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadOrder() {
       try {
-        const res = await fetch(`/api/orders?id=${orderId}`);
+        const res = await fetch(`/api/orders?id=${orderId}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store' },
+        });
         if (res.ok) {
           const data = await res.json();
           setOrder(data);
+          setFetchError(null);
         } else {
-          setOrder({
-            id: orderId,
-            tenant_id: 'a1000000-0000-0000-0000-000000000001',
-            branch_id: 'b1000000-0000-0000-0000-000000000001',
-            daily_order_code: parseInt(initialCode, 10) || 104,
-            order_type: 'in_store',
-            tracking_token: 'demo-token',
-            customer_name: 'زبون سريع',
-            customer_phone: '0911223344',
-            total_items_count: 1,
-            total_pages_count: 24,
-            total_price: 7200,
-            currency: 'SYP',
-            payment_status: 'receipt_uploaded',
-            status: 'pending',
-            files_purged: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            items: [
-              {
-                id: 'demo-item-1',
-                item_type: 'file_upload',
-                item_title: 'ملف_الطباعة_المطلوب.pdf',
-                page_count: 24,
-                copies_count: 1,
-                paper_size: 'A4',
-                color_mode: 'bw',
-                duplex: 'duplex',
-                selected_services: [],
-                item_price: 7200,
-              }
-            ],
-          });
+          const errData = await res.json().catch(() => ({}));
+          console.error('Error fetching order:', errData);
+          setFetchError(errData.error || `تعذر العثور على الطلب (${res.status})`);
         }
-      } catch (err) {
-        console.error(err);
+      } catch (err: any) {
+        console.error('Network error loading order:', err);
+        setFetchError(err?.message || 'خطأ في الاتصال بالخادم');
       } finally {
         setLoading(false);
       }
@@ -74,36 +51,73 @@ export default function OrderTrackingPage() {
 
     loadOrder();
 
-    // 1. Cross-tab instant communication via BroadcastChannel
-    let bc: BroadcastChannel | null = null;
+    // 1. Supabase Realtime subscription for instant status update across devices
+    let channel: any = null;
     try {
-      bc = new BroadcastChannel('mktabati_orders');
-      bc.onmessage = (event) => {
-        if (event.data?.type === 'ORDER_UPDATED' && event.data.orderId === orderId) {
-          setOrder((prev) => (prev ? { ...prev, status: event.data.status } : null));
-        }
-      };
-    } catch {}
+      const supabase = createClient();
+      channel = supabase
+        .channel(`order_tracking_${orderId}`)
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'print_orders', filter: `id=eq.${orderId}` },
+          (payload) => {
+            console.log('Realtime order update from Supabase:', payload);
+            if (payload.new) {
+              setOrder((prev) => (prev ? { ...prev, ...payload.new } : (payload.new as any)));
+            }
+          }
+        )
+        .subscribe();
+    } catch (e) {
+      console.warn('Realtime subscription error on tracking page:', e);
+    }
 
-    // 2. High-frequency polling (every 2 seconds)
+    // 2. High-frequency non-cached polling as fallback
     const interval = setInterval(() => {
-      fetch(`/api/orders?id=${orderId}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
+      fetch(`/api/orders?id=${orderId}`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
           if (data) setOrder(data);
         })
         .catch(() => {});
-    }, 2000);
+    }, 2500);
 
     return () => {
-      if (bc) bc.close();
+      if (channel) {
+        try {
+          const supabase = createClient();
+          supabase.removeChannel(channel);
+        } catch {}
+      }
       clearInterval(interval);
     };
-  }, [orderId, initialCode]);
+  }, [orderId]);
 
   const currentStatus: OrderStatus = order?.status || 'pending';
   // Stage 2 is active if order was confirmed & sent to printer
   const isStage2 = currentStatus === 'completed' || currentStatus === 'printing' || currentStatus === 'approved';
+
+  if (!loading && !order && fetchError) {
+    return (
+      <div className="min-h-screen bg-slate-50 py-12 px-4 flex flex-col items-center justify-center">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-4 shadow-sm">
+          <div className="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h2 className="text-lg font-black text-slate-900">تعذر تحميل بيانات الطلب</h2>
+          <p className="text-xs text-rose-600 font-mono bg-rose-50 p-3 rounded-xl border border-rose-200">
+            {fetchError}
+          </p>
+          <Link
+            href={`/${tenantSlug}/${branchSlug}/print`}
+            className="inline-block px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold transition-all shadow-md shadow-brand-600/20"
+          >
+            إنشاء طلب جديد
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
