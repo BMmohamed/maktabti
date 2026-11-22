@@ -159,36 +159,77 @@ function writeLocalOrders(orders: PrintOrder[]) {
   }
 }
 
+// Timeout wrapper so that slow cloud network calls never freeze UI or local polling
+async function withTimeout<T>(promise: Promise<T>, timeoutMs = 1200): Promise<T> {
+  let timeoutHandle: NodeJS.Timeout;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutHandle = setTimeout(() => reject(new Error('Cloud DB timeout')), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutHandle));
+}
+
 // GET: Retrieve all orders or a single order by ID
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
 
-  // Check Supabase first if configured
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
-    try {
-      const admin = createAdminClient();
-      let query = admin.from('print_orders').select('*, items:print_order_items(*)').order('created_at', { ascending: false });
-      if (id) {
-        query = query.eq('id', id);
-        const { data, error } = await query.single();
-        if (!error && data) return NextResponse.json(data);
-      } else {
-        const { data, error } = await query;
-        if (!error && data && data.length > 0) return NextResponse.json(data);
-      }
-    } catch {
-      // Fallback to local storage if Supabase is offline or fails
-    }
-  }
-
   const localOrders = readLocalOrders();
+
   if (id) {
     const cleanId = id.trim().replace('#', '');
     const found = localOrders.find(o => o.id === id || String(o.daily_order_code) === cleanId || o.id === cleanId);
     if (found) return NextResponse.json(found);
+
+    // If not found locally, try Cloud Supabase with strict timeout
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
+      try {
+        const admin = createAdminClient();
+        const { data, error } = await withTimeout(
+          admin.from('print_orders').select('*, items:print_order_items(*)').eq('id', id).single()
+        );
+        if (!error && data) return NextResponse.json(data);
+      } catch {}
+    }
+
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  }
+
+  // Fetch all orders:
+  // If Supabase is configured, attempt fast fetch with timeout
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
+    try {
+      const admin = createAdminClient();
+      const { data, error } = await withTimeout(
+        admin.from('print_orders').select('*, items:print_order_items(*)').order('created_at', { ascending: false })
+      );
+      if (!error && Array.isArray(data) && data.length > 0) {
+        // Smart merge: Keep local orders (such as status updates and newly placed orders like #106)
+        const localMap = new Map(localOrders.map(o => [o.id, o]));
+        const merged: PrintOrder[] = data.map((cloudOrder: any) => {
+          const local = localMap.get(cloudOrder.id);
+          if (local) {
+            return { ...cloudOrder, ...local };
+          }
+          return cloudOrder;
+        });
+
+        // Add any local orders that haven't synced to cloud yet
+        const cloudIds = new Set(data.map((d: any) => d.id));
+        for (const loc of localOrders) {
+          if (!cloudIds.has(loc.id)) {
+            merged.unshift(loc);
+          }
+        }
+
+        // Sort descending by order code
+        merged.sort((a, b) => (b.daily_order_code || 0) - (a.daily_order_code || 0));
+        return NextResponse.json(merged);
+      }
+    } catch {
+      // Fallback directly and immediately to local storage
+    }
   }
 
   return NextResponse.json(localOrders);
@@ -228,53 +269,55 @@ export async function POST(request: NextRequest) {
       items: body.items || [],
     };
 
-    // Prepend to local storage
+    // Prepend to local storage immediately
     const updatedOrders = [newOrder, ...localOrders];
     writeLocalOrders(updatedOrders);
 
-    // Also sync to Supabase if available
+    // Non-blocking async sync to Supabase if available
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
-      try {
-        const admin = createAdminClient();
-        await admin.from('print_orders').insert([{
-          id: newOrder.id,
-          tenant_id: newOrder.tenant_id,
-          branch_id: newOrder.branch_id,
-          daily_order_code: newOrder.daily_order_code,
-          order_type: newOrder.order_type,
-          customer_name: newOrder.customer_name,
-          customer_phone: newOrder.customer_phone,
-          customer_notes: newOrder.customer_notes,
-          total_items_count: newOrder.total_items_count,
-          total_pages_count: newOrder.total_pages_count,
-          total_price: newOrder.total_price,
-          currency: newOrder.currency,
-          payment_status: newOrder.payment_status,
-          payment_receipt_path: newOrder.payment_receipt_path,
-          status: newOrder.status,
-        }]);
+      (async () => {
+        try {
+          const admin = createAdminClient();
+          await withTimeout(admin.from('print_orders').insert([{
+            id: newOrder.id,
+            tenant_id: newOrder.tenant_id,
+            branch_id: newOrder.branch_id,
+            daily_order_code: newOrder.daily_order_code,
+            order_type: newOrder.order_type,
+            customer_name: newOrder.customer_name,
+            customer_phone: newOrder.customer_phone,
+            customer_notes: newOrder.customer_notes,
+            total_items_count: newOrder.total_items_count,
+            total_pages_count: newOrder.total_pages_count,
+            total_price: newOrder.total_price,
+            currency: newOrder.currency,
+            payment_status: newOrder.payment_status,
+            payment_receipt_path: newOrder.payment_receipt_path,
+            status: newOrder.status,
+          }]), 2500);
 
-        if (newOrder.items && newOrder.items.length > 0) {
-          const itemsPayload = newOrder.items.map(item => ({
-            order_id: newOrder.id,
-            item_type: item.item_type,
-            note_id: item.note_id || null,
-            item_title: item.item_title,
-            file_path: item.file_path || null,
-            page_count: item.page_count,
-            copies_count: item.copies_count,
-            paper_size: item.paper_size,
-            color_mode: item.color_mode,
-            duplex: item.duplex,
-            selected_services: item.selected_services,
-            item_price: item.item_price,
-          }));
-          await admin.from('print_order_items').insert(itemsPayload);
+          if (newOrder.items && newOrder.items.length > 0) {
+            const itemsPayload = newOrder.items.map(item => ({
+              order_id: newOrder.id,
+              item_type: item.item_type,
+              note_id: item.note_id || null,
+              item_title: item.item_title,
+              file_path: item.file_path || null,
+              page_count: item.page_count,
+              copies_count: item.copies_count,
+              paper_size: item.paper_size,
+              color_mode: item.color_mode,
+              duplex: item.duplex,
+              selected_services: item.selected_services,
+              item_price: item.item_price,
+            }));
+            await withTimeout(admin.from('print_order_items').insert(itemsPayload), 2500);
+          }
+        } catch (e) {
+          console.warn('Could not sync order to cloud Supabase (non-critical):', e);
         }
-      } catch (e) {
-        console.warn('Could not sync order to cloud Supabase:', e);
-      }
+      })();
     }
 
     return NextResponse.json(newOrder, { status: 201 });
@@ -347,17 +390,19 @@ export async function PATCH(request: NextRequest) {
     localOrders[index] = order;
     writeLocalOrders(localOrders);
 
-    // Sync update to Supabase if configured
+    // Non-blocking async sync update to Supabase if configured
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
-      try {
-        const admin = createAdminClient();
-        await admin.from('print_orders').update({
-          ...(status && { status }),
-          ...(payment_status && { payment_status }),
-          updated_at: order.updated_at,
-        }).eq('id', id);
-      } catch {}
+      (async () => {
+        try {
+          const admin = createAdminClient();
+          await withTimeout(admin.from('print_orders').update({
+            ...(status && { status }),
+            ...(payment_status && { payment_status }),
+            updated_at: order.updated_at,
+          }).eq('id', id), 2500);
+        } catch {}
+      })();
     }
 
     return NextResponse.json(order);
