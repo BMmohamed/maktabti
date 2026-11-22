@@ -220,6 +220,11 @@ export async function PATCH(request: NextRequest) {
     };
     if (status) updateFields.status = status;
     if (payment_status) updateFields.payment_status = payment_status;
+    if (body.customer_notes !== undefined) {
+      updateFields.customer_notes = body.customer_notes;
+    } else if (body.rejection_reason) {
+      updateFields.customer_notes = `[سبب الرفض: ${body.rejection_reason}]`;
+    }
     if (status === 'completed') {
       updateFields.completed_at = new Date().toISOString();
       updateFields.printed_at = new Date().toISOString();

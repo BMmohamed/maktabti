@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { 
   CheckCircle2, Clock, Printer, CheckCheck, Phone, 
   MapPin, AlertCircle, Sparkles, MessageCircle, ArrowRight,
-  FileText, Coins, BookOpen, Layers, Copy
+  FileText, Coins, BookOpen, Layers, Copy, Ban
 } from 'lucide-react';
 import { OrderStatusBadge, PaymentStatusBadge } from '@/components/OrderStatusBadge';
 import { PrintOrder, OrderStatus } from '@/types';
@@ -96,6 +96,7 @@ export default function OrderTrackingPage() {
   const currentStatus: OrderStatus = order?.status || 'pending';
   // Stage 2 is active if order was confirmed & sent to printer
   const isStage2 = currentStatus === 'completed' || currentStatus === 'printing' || currentStatus === 'approved';
+  const isRejected = currentStatus === 'rejected' || currentStatus === 'cancelled';
 
   if (!loading && !order && fetchError) {
     return (
@@ -124,14 +125,26 @@ export default function OrderTrackingPage() {
       <div className="max-w-xl mx-auto space-y-6">
         {/* Main Status Header Card */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 text-center relative overflow-hidden">
-          <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-brand-500 via-emerald-500 to-teal-500" />
+          <div className={`absolute top-0 inset-x-0 h-2 ${
+            isRejected
+              ? 'bg-rose-500'
+              : 'bg-gradient-to-r from-brand-500 via-emerald-500 to-teal-500'
+          }`} />
           
           <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm ${
-            isStage2 
+            isRejected
+              ? 'bg-rose-50 border border-rose-200 text-rose-600'
+              : isStage2 
               ? 'bg-emerald-50 border border-emerald-200 text-emerald-600 animate-bounce'
               : 'bg-amber-50 border border-amber-200 text-amber-600'
           }`}>
-            {isStage2 ? <Printer className="w-9 h-9" /> : <Clock className="w-9 h-9 animate-spin" />}
+            {isRejected ? (
+              <Ban className="w-9 h-9" />
+            ) : isStage2 ? (
+              <Printer className="w-9 h-9" />
+            ) : (
+              <Clock className="w-9 h-9 animate-spin" />
+            )}
           </div>
 
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -139,7 +152,11 @@ export default function OrderTrackingPage() {
           </span>
 
           <div className="my-2">
-            <span className="text-5xl sm:text-6xl font-black font-mono tracking-tight text-slate-900 bg-slate-100/80 px-6 py-2 rounded-2xl border border-slate-200 inline-block shadow-inner">
+            <span className={`text-5xl sm:text-6xl font-black font-mono tracking-tight px-6 py-2 rounded-2xl border inline-block shadow-inner ${
+              isRejected
+                ? 'bg-rose-50 text-rose-800 border-rose-200'
+                : 'text-slate-900 bg-slate-100/80 border-slate-200'
+            }`}>
               #{order?.daily_order_code || initialCode}
             </span>
           </div>
@@ -150,8 +167,33 @@ export default function OrderTrackingPage() {
           </div>
         </div>
 
-        {/* Clear Stage 2 Banner Prompt */}
-        {isStage2 ? (
+        {/* Clear Stage 2 or Rejection Banner Prompt */}
+        {isRejected ? (
+          <div className="bg-rose-600 text-white rounded-2xl p-5 shadow-lg shadow-rose-600/20 text-center space-y-2 animate-in fade-in zoom-in-95 duration-300">
+            <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/20 text-white mb-1">
+              <Ban className="w-5 h-5" />
+            </div>
+            <h3 className="text-lg font-black leading-tight">
+              تم الاعتذار عن تنفيذ هذا الطلب
+            </h3>
+            <p className="text-xs font-semibold text-rose-100 max-w-md mx-auto">
+              سبب الاعتذار:{' '}
+              <strong>
+                {order?.customer_notes?.match(/\[سبب الرفض:\s*([^\]]+)\]/)?.[1] ||
+                  order?.customer_notes ||
+                  'لم يحدد سبب محدد'}
+              </strong>
+            </p>
+            <div className="pt-2 flex items-center justify-center gap-3">
+              <Link
+                href={`/${tenantSlug}/${branchSlug}/print`}
+                className="px-4 py-2 rounded-xl bg-white text-rose-700 hover:bg-rose-50 text-xs font-black transition-colors shadow-sm"
+              >
+                تقديم طلب جديد
+              </Link>
+            </div>
+          </div>
+        ) : isStage2 ? (
           <div className="bg-emerald-600 text-white rounded-2xl p-5 shadow-lg shadow-emerald-600/20 text-center space-y-2 animate-in fade-in zoom-in-95 duration-300">
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/20 text-white mb-1">
               <Printer className="w-5 h-5 animate-pulse" />

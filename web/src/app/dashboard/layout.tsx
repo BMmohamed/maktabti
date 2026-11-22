@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { 
   Printer, BookOpen, Smartphone, ShoppingCart, 
   Boxes, Building2, BarChart3, Settings, ExternalLink, 
-  Menu, X, LayoutGrid, ShieldCheck, Sparkles, Store, Coins
+  Menu, X, LayoutGrid, ShieldCheck, Sparkles, Store, Coins, Ban
 } from 'lucide-react';
 import { Tenant, AppModuleKey } from '@/types';
 import { AppLauncher } from '@/components/AppLauncher';
@@ -52,6 +52,7 @@ export default function DashboardLayout({
   }> = [
     { name: 'منظومة التطبيقات (Apps)', href: '/dashboard/apps', icon: LayoutGrid },
     { key: 'smart_print', name: 'طابور الطباعة الفوري', href: '/dashboard', icon: Printer },
+    { key: 'smart_print', name: 'الطلبات المرفوضة', href: '/dashboard/rejected', icon: Ban },
     { key: 'notes_catalog', name: 'مكتبة النوط والملخصات', href: '/dashboard/notes', icon: BookOpen },
     { key: 'pos', name: 'نقطة البيع والكاشير (POS)', href: '/dashboard/pos', icon: ShoppingCart, badge: 'قريباً' },
     { key: 'inventory', name: 'المخزون والقرطاسية', href: '/dashboard/inventory', icon: Boxes, badge: 'قريباً' },

@@ -147,3 +147,26 @@ export function buildWhatsAppPickupLink(
 
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
 }
+
+/**
+ * Build WhatsApp rejection message link
+ */
+export function buildWhatsAppRejectionLink(
+  phone: string,
+  dailyOrderCode: number,
+  branchName: string,
+  reason: string,
+  customerName?: string | null
+): string {
+  let cleanPhone = phone.replace(/[^\d+]/g, '');
+  if (cleanPhone.startsWith('09')) {
+    cleanPhone = '963' + cleanPhone.substring(1);
+  } else if (cleanPhone.startsWith('+')) {
+    cleanPhone = cleanPhone.substring(1);
+  }
+
+  const greeting = customerName ? `مرحباً ${customerName}` : 'مرحباً بك';
+  const text = `${greeting}، بخصوص طلب الطباعة رقم #${dailyOrderCode} لدى ${branchName}؛ نعتذر عن تنفيذه للأسباب التالية: (${reason}). يرجى التواصل معنا أو مراجعة الفرع. شكراً لتفهمك!`;
+
+  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+}

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Printer, CheckCircle2, Clock, CheckCheck, XCircle, 
   Eye, MessageCircle, AlertCircle, RefreshCw, Volume2, 
-  Smartphone, FileText, Check, RotateCw, AlertTriangle
+  Smartphone, FileText, Check, RotateCw, AlertTriangle, Ban, RotateCcw
 } from 'lucide-react';
 import { PrintOrder, OrderStatus, PaymentStatus } from '@/types';
 import { OrderStatusBadge, PaymentStatusBadge } from '@/components/OrderStatusBadge';
@@ -12,14 +12,16 @@ import { formatCurrency, buildWhatsAppPickupLink } from '@/lib/utils';
 import { playNotificationSound } from '@/lib/sound';
 import { ModuleRouteGuard } from '@/components/ModuleRouteGuard';
 import { createClient } from '@/lib/supabase/client';
+import { RejectOrderModal } from '@/components/RejectOrderModal';
 
 export default function DashboardOrdersPage() {
   const [orders, setOrders] = useState<PrintOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [autoPrintMode, setAutoPrintMode] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<'pending' | 'completed' | 'all'>('pending');
+  const [activeFilter, setActiveFilter] = useState<'pending' | 'completed' | 'rejected' | 'all'>('pending');
   const [apiError, setApiError] = useState<string | null>(null);
+  const [rejectingOrder, setRejectingOrder] = useState<PrintOrder | null>(null);
 
   // Sham Cash Receipt Modal state
   const [selectedReceiptUrl, setSelectedReceiptUrl] = useState<string | null>(null);
@@ -182,15 +184,68 @@ export default function DashboardOrdersPage() {
     }
   };
 
+  // Reject Order Action
+  const handleRejectOrder = async (orderId: string, reason: string) => {
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'PATCH',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: orderId,
+          status: 'rejected',
+          rejection_reason: reason,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `فشل رفض الطلب (${res.status})`);
+      }
+
+      fetchOrders();
+    } catch (err: any) {
+      console.error('Error rejecting order:', err);
+      alert(`خطأ: ${err.message}`);
+    }
+  };
+
+  // Restore Rejected Order to Pending Action
+  const handleRestoreOrder = async (order: PrintOrder) => {
+    if (!confirm(`هل تريد إعادة الطلب #${order.daily_order_code} إلى طابور المراجعة النشط؟`)) return;
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'PATCH',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: order.id,
+          status: 'pending',
+          customer_notes: order.customer_notes
+            ? order.customer_notes.replace(/\[سبب الرفض:.*?\]\s*-?\s*/g, '')
+            : null,
+        }),
+      });
+      if (res.ok) {
+        fetchOrders();
+      }
+    } catch (err: any) {
+      console.error('Error restoring order:', err);
+      alert(`خطأ: ${err.message}`);
+    }
+  };
+
   // Filtered list
   const filteredOrders = orders.filter((o) => {
     if (activeFilter === 'pending') return o.status === 'pending';
     if (activeFilter === 'completed') return o.status === 'completed' || o.status === 'printing' || o.status === 'approved';
+    if (activeFilter === 'rejected') return o.status === 'rejected' || o.status === 'cancelled';
     return true;
   });
 
   const pendingCount = orders.filter(o => o.status === 'pending').length;
   const completedCount = orders.filter(o => o.status === 'completed' || o.status === 'printing' || o.status === 'approved').length;
+  const rejectedCount = orders.filter(o => o.status === 'rejected' || o.status === 'cancelled').length;
   const sypOrdersCount = orders.filter(o => o.currency === 'SYP' || !o.currency).length;
   const tryOrdersCount = orders.filter(o => o.currency === 'TRY').length;
 
@@ -310,6 +365,23 @@ export default function DashboardOrdersPage() {
         </button>
 
         <button
+          onClick={() => setActiveFilter('rejected')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            activeFilter === 'rejected'
+              ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Ban className="w-3.5 h-3.5" />
+          <span>الطلبات المرفوضة</span>
+          <span className={`px-2 py-0.5 rounded-md text-[11px] font-black ${
+            activeFilter === 'rejected' ? 'bg-rose-700 text-white' : 'bg-rose-100 text-rose-800'
+          }`}>
+            {rejectedCount}
+          </span>
+        </button>
+
+        <button
           onClick={() => setActiveFilter('all')}
           className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             activeFilter === 'all'
@@ -352,12 +424,15 @@ export default function DashboardOrdersPage() {
           {filteredOrders.map((order) => {
             const hasShamCashReceipt = order.payment_status === 'receipt_uploaded' || !!order.payment_receipt_path;
             const isPending = order.status === 'pending';
+            const isRejected = order.status === 'rejected' || order.status === 'cancelled';
 
             return (
               <div
                 key={order.id}
                 className={`bg-white rounded-2xl p-5 border shadow-sm transition-all space-y-4 ${
-                  isPending
+                  isRejected
+                    ? 'border-rose-300 ring-2 ring-rose-400/20 bg-rose-50/20'
+                    : isPending
                     ? 'border-amber-300 ring-2 ring-amber-400/20'
                     : 'border-slate-200'
                 }`}
@@ -475,7 +550,25 @@ export default function DashboardOrdersPage() {
 
                 {/* Streamlined Action Buttons */}
                 <div className="pt-2 border-t border-slate-100">
-                  {isPending ? (
+                  {isRejected ? (
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between w-full gap-2 bg-rose-50 p-3 rounded-xl border border-rose-200">
+                      <div className="flex items-center gap-1.5 text-xs text-rose-900">
+                        <Ban className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>
+                          <strong>طلب معتذر عنه:</strong>{' '}
+                          {order.customer_notes?.match(/\[سبب الرفض:\s*([^\]]+)\]/)?.[1] || order.customer_notes || 'لم يحدد سبب'}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleRestoreOrder(order)}
+                        className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors flex items-center gap-1 shrink-0 shadow-xs"
+                        title="إعادة هذا الطلب إلى طابور المراجعة"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>استرجاع للمراجعة</span>
+                      </button>
+                    </div>
+                  ) : isPending ? (
                     <div className="flex items-center gap-2">
                       {/* Main Primary Button: "تأكيد وطباعة" */}
                       <button
@@ -494,6 +587,16 @@ export default function DashboardOrdersPage() {
                       >
                         <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                         <span>تأكيد يدوي</span>
+                      </button>
+
+                      {/* Reject Order Button */}
+                      <button
+                        onClick={() => setRejectingOrder(order)}
+                        className="py-3 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 hover:border-rose-300 transition-colors flex items-center gap-1 shrink-0"
+                        title="الاعتذار عن تنفيذ الطلب وإرسال سبب الرفض"
+                      >
+                        <Ban className="w-3.5 h-3.5 text-rose-600" />
+                        <span>رفض الطلب</span>
                       </button>
                     </div>
                   ) : (
@@ -571,6 +674,14 @@ export default function DashboardOrdersPage() {
           </div>
         </div>
       )}
+
+      {/* Reject Order Modal */}
+      <RejectOrderModal
+        order={rejectingOrder}
+        isOpen={!!rejectingOrder}
+        onClose={() => setRejectingOrder(null)}
+        onConfirmReject={handleRejectOrder}
+      />
     </div>
     </ModuleRouteGuard>
   );
