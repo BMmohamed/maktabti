@@ -327,8 +327,8 @@ export default function PrintOrderWizardPage() {
       setSubmitError('يرجى إضافة ملف واحد على الأقل أو نوطة للطلب.');
       return;
     }
-    if (!customerPhone.trim()) {
-      setSubmitError('يرجى إدخال رقم الهاتف للتواصل وإشعارك عند جهوزية الطلب.');
+    if (orderType === 'remote' && !customerPhone.trim()) {
+      setSubmitError('يرجى إدخال رقم الهاتف للتواصل وإشعارك عند جهوزية الطلب المسبق.');
       return;
     }
     if (isShamCashMandatory && !receiptFile) {
@@ -369,8 +369,8 @@ export default function PrintOrderWizardPage() {
         tenant_id: tenant?.id || 'a1000000-0000-0000-0000-000000000001',
         branch_id: branch?.id || 'b1000000-0000-0000-0000-000000000001',
         order_type: orderType,
-        customer_name: customerName.trim() || 'زبون سريع',
-        customer_phone: customerPhone.trim(),
+        customer_name: customerName.trim() || (orderType === 'remote' ? 'زبون سريع' : 'زبون الفرع (QR)'),
+        customer_phone: customerPhone.trim() || (orderType === 'remote' ? '' : 'استلام مباشر داخل الفرع'),
         customer_notes: customerNotes.trim() || null,
         total_items_count: orderItems.length,
         total_pages_count: totalPages,
@@ -878,51 +878,76 @@ export default function PrintOrderWizardPage() {
           </section>
         )}
 
-        {/* Step 4: Contact info */}
-        <section className="bg-white/88 backdrop-blur-md rounded-3xl p-5 shadow-sm border border-white/80 space-y-4">
-          <label className="text-sm font-bold text-slate-800 block">
-            3. بيانات الاتصال للتنبيه والاستلام
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-600 block mb-1">
-                رقم الهاتف (واتساب) <span className="text-rose-500">*</span>
+        {/* Step 3: Contact info / Optional Notes */}
+        {orderType === 'remote' ? (
+          <section className="bg-white/88 backdrop-blur-md rounded-3xl p-5 shadow-sm border border-white/80 space-y-4 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-bold text-slate-800 block">
+                3. بيانات الاتصال للتنبيه والاستلام المسبق
               </label>
-              <input
-                type="tel"
-                placeholder="مثال: 0912345678"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                dir="ltr"
-                className="w-full text-right px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-tenant-primary font-mono"
-              />
+              <span className="text-[11px] text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">
+                مطلوبة للطلبات عن بُعد
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">
+                  رقم الهاتف (واتساب) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="tel"
+                  placeholder="مثال: 0912345678"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  dir="ltr"
+                  className="w-full text-right px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-tenant-primary font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">
+                  اسم الزبون (اختياري)
+                </label>
+                <input
+                  type="text"
+                  placeholder="اسمك أو كنيتك"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-tenant-primary"
+                />
+              </div>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-600 block mb-1">
-                اسم الزبون (اختياري)
+                ملاحظات إضافية للموظف (اختياري)
               </label>
-              <input
-                type="text"
-                placeholder="اسمك أو كنيتك"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-tenant-primary"
+              <textarea
+                rows={2}
+                placeholder="مثال: يرجى تكبيس كل فصل لوحده..."
+                value={customerNotes}
+                onChange={(e) => setCustomerNotes(e.target.value)}
+                className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-tenant-primary resize-none"
               />
             </div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-600 block mb-1">
-              ملاحظات إضافية للموظف (اختياري)
-            </label>
+          </section>
+        ) : (
+          <section className="bg-white/88 backdrop-blur-md rounded-3xl p-5 shadow-sm border border-white/80 space-y-3 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-bold text-slate-800 block">
+                3. ملاحظات إضافية للطباعة (اختياري)
+              </label>
+              <span className="text-xs text-emerald-800 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60">
+                ⚡ استلام فوري مباشر بدون إدخال بيانات اتصال
+              </span>
+            </div>
             <textarea
               rows={2}
-              placeholder="مثال: يرجى تكبيس كل فصل لوحده..."
+              placeholder="مثال: يرجى تكبيس الأوراق بدبوس في الزاوية (اختياري)..."
               value={customerNotes}
               onChange={(e) => setCustomerNotes(e.target.value)}
               className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-tenant-primary resize-none"
             />
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* Sham Cash Alert Prompt */}
         {branch?.sham_cash_enabled && (

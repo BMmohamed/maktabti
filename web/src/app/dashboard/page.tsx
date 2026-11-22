@@ -346,8 +346,12 @@ export default function DashboardOrdersPage() {
                 <div className="flex items-center justify-between text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-slate-800">{order.customer_name || 'زبون سريع'}</span>
-                    <span className="text-slate-400">•</span>
-                    <span className="font-mono text-slate-600 dir-ltr">{order.customer_phone}</span>
+                    {order.customer_phone && order.customer_phone !== 'استلام مباشر داخل الفرع' && (
+                      <>
+                        <span className="text-slate-400">•</span>
+                        <span className="font-mono text-slate-600 dir-ltr">{order.customer_phone}</span>
+                      </>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="font-black text-brand-700 text-sm">
