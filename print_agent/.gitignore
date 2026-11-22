@@ -1,0 +1,30 @@
+# Secret Credentials & Agent Config
+config.json
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Build artifacts
+dist/
+build/
+*.spec
+*.exe
+
+# Spool directory & local logs
+temp_prints/
+*.log
+agent.log
+
+# OS files
+.DS_Store
+Thumbs.db

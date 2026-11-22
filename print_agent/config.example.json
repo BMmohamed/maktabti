@@ -1,0 +1,15 @@
+{
+  "supabase_url": "https://your-project.supabase.co",
+  "supabase_key": "your-anon-or-service-key",
+  "tenant_id": "a1000000-0000-0000-0000-000000000001",
+  "branch_id": "b1000000-0000-0000-0000-000000000001",
+  "agent_auth_token": "your-secret-agent-token",
+  "sumatra_pdf_path": "bin\\SumatraPDF.exe",
+  "printers": {
+    "bw_laser_printer": "HP LaserJet P2035",
+    "color_printer": "Epson L805 Series"
+  },
+  "poll_interval_seconds": 3,
+  "temp_download_dir": "temp_prints",
+  "auto_delete_local_files_after_print": true
+}

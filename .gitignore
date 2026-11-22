@@ -1,0 +1,77 @@
+# ==========================================
+# Secret Keys & Environment Configurations
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+web/.env.local
+web/.env*.local
+
+# Print Agent Secret Config & Credentials
+config.json
+print_agent/config.json
+*.pem
+*.key
+*.cert
+
+# ==========================================
+# Node.js & Next.js Build Outputs
+# ==========================================
+node_modules/
+web/node_modules/
+.next/
+web/.next/
+out/
+web/out/
+build/
+web/build/
+dist/
+web/dist/
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# Local mock persistence
+web/.data/
+
+# ==========================================
+# Python & Print Agent Artifacts
+# ==========================================
+__pycache__/
+print_agent/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+print_agent/venv/
+print_agent/.venv/
+build/
+print_agent/build/
+dist/
+print_agent/dist/
+*.egg-info/
+print_agent/*.egg-info/
+
+# Print Agent Temp Spool & Logs
+print_agent/temp_prints/
+temp_prints/
+*.log
+agent.log
+print_agent/agent.log
+print_agent/*.exe
+
+# ==========================================
+# Operating System & IDE Files
+# ==========================================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
