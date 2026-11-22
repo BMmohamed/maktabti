@@ -50,6 +50,11 @@ class MaktabatiPrintAgent:
         self.tenant_id = self.config.get("tenant_id", "")
         self.branch_id = self.config.get("branch_id", "")
         self.agent_token = self.config.get("agent_auth_token", "")
+        self.web_api_url = (
+            os.environ.get("WEB_API_URL") 
+            or self.config.get("web_api_url") 
+            or "http://localhost:3000"
+        ).rstrip("/")
         self.sumatra_path = self.resolve_sumatra_path(self.config.get("sumatra_pdf_path", "bin\\SumatraPDF.exe"))
         self.printers = self.config.get("printers", {})
         self.poll_interval = self.config.get("poll_interval_seconds", 3)
@@ -179,9 +184,9 @@ class MaktabatiPrintAgent:
 
     def fetch_pending_orders(self) -> List[Dict[str, Any]]:
         """Polls for orders ready to print for this branch."""
-        # 1. Check local dev API if running on localhost
+        # 1. Check web API endpoint (injected by Vercel binding or local dev)
         try:
-            res = requests.get("http://localhost:3000/api/orders", timeout=2)
+            res = requests.get(f"{self.web_api_url}/api/orders", timeout=2)
             if res.status_code == 200:
                 orders = res.json()
                 ready_orders = [
@@ -215,9 +220,9 @@ class MaktabatiPrintAgent:
         """Updates the order status across local and cloud backends."""
         now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-        # Update local dev server API
+        # Update web server API
         try:
-            requests.patch("http://localhost:3000/api/orders", json={"id": order_id, "status": status}, timeout=2)
+            requests.patch(f"{self.web_api_url}/api/orders", json={"id": order_id, "status": status}, timeout=2)
         except Exception:
             pass
 
