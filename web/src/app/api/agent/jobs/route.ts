@@ -29,13 +29,29 @@ export async function GET(request: NextRequest) {
     // A job is ready for printing if:
     // - status is 'printing' or 'approved'
     // - OR status is 'completed' and printed_at IS NULL (ready for physical print dispatch)
-    const { data: rawOrders, error } = await supabase
+    const sinceParam = request.nextUrl.searchParams.get('since');
+
+    let query = supabase
       .from('print_orders')
       .select('*, items:print_order_items(*)')
       .eq('branch_id', branch.id)
       .or('status.eq.printing,status.eq.approved,and(status.eq.completed,printed_at.is.null)')
       .order('created_at', { ascending: true })
       .limit(10);
+
+    if (sinceParam) {
+      const cleanSince = sinceParam.trim().replace(' ', '+');
+      try {
+        const parsedDate = new Date(cleanSince);
+        if (!isNaN(parsedDate.getTime())) {
+          query = query.gte('created_at', parsedDate.toISOString());
+        }
+      } catch (err) {
+        console.warn('Invalid since parameter:', sinceParam);
+      }
+    }
+
+    const { data: rawOrders, error } = await query;
 
     if (error) {
       console.error('Supabase error fetching agent jobs:', error);

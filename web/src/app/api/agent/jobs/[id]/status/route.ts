@@ -98,7 +98,9 @@ export async function POST(
       } catch (auditErr) {
         console.warn('Could not insert print audit log:', auditErr);
       }
-    } else if (status === 'failed') {
+    } else if (status === 'failed' || status === 'rejected' || status === 'cancelled') {
+      updateFields.status = 'rejected';
+      updateFields.printed_at = nowIso;
       const errorNote = error_message ? `[فشل في الطباعة المادية: ${error_message}]` : '[فشل في الطباعة المادية]';
       updateFields.customer_notes = existingOrder.customer_notes 
         ? `${existingOrder.customer_notes}\n${errorNote}`

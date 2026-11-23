@@ -146,6 +146,9 @@ class PrintWorker(QThread):
         self.get_config_cb = get_config_cb
         self.is_running = True
         self.is_paused = False
+        from datetime import datetime, timezone
+        self.session_start_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.processed_ids = set()
 
     def stop(self):
         self.is_running = False
@@ -174,10 +177,13 @@ class PrintWorker(QThread):
                 time.sleep(2)
                 continue
 
-            # Poll printable jobs
+            # Poll printable jobs (passing since timestamp so old past orders are ignored)
             try:
                 headers = {"X-Agent-Token": token, "Accept": "application/json"}
-                res = requests.get(f"{api_url}/api/agent/jobs", headers=headers, timeout=10)
+                url = f"{api_url}/api/agent/jobs"
+                if self.session_start_iso:
+                    url += f"?since={self.session_start_iso}"
+                res = requests.get(url, headers=headers, timeout=10)
                 
                 if res.status_code == 401 or res.status_code == 403:
                     self.status_updated.emit("رمز الربط غير صالح أو تم إلغاؤه", "#ef4444")
@@ -187,11 +193,15 @@ class PrintWorker(QThread):
                 if res.status_code == 200:
                     data = res.json()
                     jobs = data.get("jobs", [])
-                    self.status_updated.emit(f"متصل وجاهز للطباعة ({len(jobs)} في الانتظار)", "#10b981")
+                    unprocessed = [j for j in jobs if (j.get("id") or j.get("order_id")) not in self.processed_ids]
+                    self.status_updated.emit(f"متصل وجاهز للطباعة ({len(unprocessed)} في الانتظار)", "#10b981")
 
-                    for job in jobs:
+                    for job in unprocessed:
                         if not self.is_running or self.is_paused:
                             break
+                        j_id = job.get("id") or job.get("order_id")
+                        if j_id:
+                            self.processed_ids.add(j_id)
                         self.process_job(job, api_url, token, bw_printer, color_printer, temp_dir)
 
                 else:
