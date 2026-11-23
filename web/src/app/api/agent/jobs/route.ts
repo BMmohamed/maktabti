@@ -56,17 +56,18 @@ export async function GET(request: NextRequest) {
                 downloadUrl = item.file_path;
               } else {
                 // Generate Signed URL from Supabase Storage (valid for 1 hour)
+                const bucketName = item.item_type === 'catalog_note' ? 'notes-catalog-files' : 'customer-files';
                 try {
                   const { data: signedData, error: signErr } = await supabase.storage
-                    .from('print_files')
+                    .from(bucketName)
                     .createSignedUrl(item.file_path, 3600);
 
                   if (!signErr && signedData?.signedUrl) {
                     downloadUrl = signedData.signedUrl;
                   } else {
-                    // Fallback to public URL format if signing fails
+                    // Fallback to public URL format
                     const { data: pubData } = supabase.storage
-                      .from('print_files')
+                      .from(bucketName)
                       .getPublicUrl(item.file_path);
                     downloadUrl = pubData?.publicUrl || item.file_path;
                   }

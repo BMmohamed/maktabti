@@ -209,8 +209,8 @@ class PrintWorker(QThread):
                 time.sleep(0.5)
 
     def process_job(self, job: dict, api_url: str, token: str, bw_printer: str, color_printer: str, temp_dir: Path):
-        order_id = job.get("order_id")
-        order_number = str(job.get("order_number", order_id[:8] if order_id else "---"))
+        order_id = job.get("id") or job.get("order_id")
+        order_number = str(job.get("daily_order_code") or job.get("order_number") or (order_id[:8] if order_id else "---"))
         items = job.get("items", [])
 
         now_time = time.strftime("%H:%M:%S")
@@ -251,6 +251,12 @@ class PrintWorker(QThread):
                 all_success = False
                 last_error = "لم يتم تحديد طابعة في البرنامج"
                 self.log_message.emit(f"خطأ: لم يتم تحديد طابعة لإرسال الملف #{idx+1}")
+                break
+
+            if not file_url:
+                all_success = False
+                last_error = f"لا يوجد مسار تحميل للملف #{idx+1}"
+                self.log_message.emit(f"تنبيه: الطلب #{order_number} الملف #{idx+1} غير متوفر على السيرفر.")
                 break
 
             # Download file

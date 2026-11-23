@@ -227,7 +227,11 @@ export async function PATCH(request: NextRequest) {
     }
     if (status === 'completed') {
       updateFields.completed_at = new Date().toISOString();
-      updateFields.printed_at = new Date().toISOString();
+      if (!body.trigger_agent) {
+        updateFields.printed_at = new Date().toISOString();
+      }
+    } else if (status === 'approved') {
+      updateFields.approved_at = new Date().toISOString();
     } else if (status === 'printing') {
       updateFields.agent_claimed_at = new Date().toISOString();
     }

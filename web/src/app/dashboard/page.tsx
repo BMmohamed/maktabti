@@ -100,7 +100,7 @@ export default function DashboardOrdersPage() {
 
   // Primary Action: "تأكيد وطباعة" (Normal Agent Dispatch)
   const handleConfirmAndPrint = async (order: PrintOrder) => {
-    const updatedStatus: OrderStatus = 'completed';
+    const updatedStatus: OrderStatus = 'approved';
     const updatedPayment: PaymentStatus = order.payment_status === 'receipt_uploaded' ? 'verified' : order.payment_status;
 
     // Optimistic UI update
@@ -115,7 +115,7 @@ export default function DashboardOrdersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           id: order.id, 
-          status: updatedStatus,
+          status: 'approved',
           payment_status: updatedPayment,
           trigger_agent: true
         }),

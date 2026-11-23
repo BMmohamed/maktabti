@@ -347,23 +347,49 @@ export default function PrintOrderWizardPage() {
         } catch {}
       }
 
-      const cleanedItems = orderItems.map(item => ({
-        item_type: item.item_type,
-        note_id: item.note_id || null,
-        item_title: item.item_title,
-        page_count: item.page_count,
-        original_page_count: item.original_page_count || item.page_count,
-        page_selection_type: item.page_selection_type || 'all',
-        custom_page_from: item.custom_page_from || null,
-        custom_page_to: item.custom_page_to || null,
-        custom_page_range: item.custom_page_range || null,
-        copies_count: item.copies_count,
-        paper_size: item.paper_size,
-        color_mode: item.color_mode,
-        duplex: item.duplex,
-        selected_services: item.selected_services,
-        item_price: getItemPrice(item),
-      }));
+      // Upload files to Supabase storage if _localFile exists
+      const cleanedItems = await Promise.all(
+        orderItems.map(async (item) => {
+          let filePath = item.file_path || null;
+          if (item._localFile) {
+            try {
+              const fileExt = item._localFile.name.split('.').pop() || 'pdf';
+              const cleanFileName = `order_${Date.now()}_${crypto.randomUUID().slice(0, 8)}.${fileExt}`;
+              const { data: uploadData, error: uploadErr } = await supabase.storage
+                .from('customer-files')
+                .upload(cleanFileName, item._localFile, {
+                  cacheControl: '3600',
+                  upsert: true,
+                });
+              if (!uploadErr && uploadData?.path) {
+                filePath = uploadData.path;
+              } else if (uploadErr) {
+                console.warn('Storage upload error for item file:', uploadErr);
+              }
+            } catch (err) {
+              console.warn('Storage upload error for item file:', err);
+            }
+          }
+          return {
+            item_type: item.item_type,
+            note_id: item.note_id || null,
+            item_title: item.item_title,
+            file_path: filePath,
+            page_count: item.page_count,
+            original_page_count: item.original_page_count || item.page_count,
+            page_selection_type: item.page_selection_type || 'all',
+            custom_page_from: item.custom_page_from || null,
+            custom_page_to: item.custom_page_to || null,
+            custom_page_range: item.custom_page_range || null,
+            copies_count: item.copies_count,
+            paper_size: item.paper_size,
+            color_mode: item.color_mode,
+            duplex: item.duplex,
+            selected_services: item.selected_services,
+            item_price: getItemPrice(item),
+          };
+        })
+      );
 
       const payload = {
         tenant_id: tenant?.id || 'a1000000-0000-0000-0000-000000000001',
