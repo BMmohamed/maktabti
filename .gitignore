@@ -65,6 +65,8 @@ temp_prints/
 agent.log
 print_agent/agent.log
 print_agent/*.exe
+web/public/downloads/*.exe
+
 
 # ==========================================
 # Operating System & IDE Files

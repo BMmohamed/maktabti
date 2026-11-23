@@ -1,25 +1,40 @@
 @echo off
 chcp 65001 >nul
 echo ========================================================
-echo    تجميع وكيل الطباعة الذكي Maktabati Print Agent (.EXE)
+echo    بناء وتجميع برنامج الطباعة المباشرة MaktabatiPrint.exe
 echo ========================================================
 echo.
 
-echo 1. التحقق من تثبيت متطلبات بايثون...
-pip install -r requirements.txt
+cd /d "%~dp0"
+
+echo 1. التحقق من وجود مشغل SumatraPDF...
+if not exist "bin\SumatraPDF.exe" (
+    echo مشغل SumatraPDF.exe غير موجود في bin! يرجى تحميله أولاً.
+    pause
+    exit /b 1
+)
 
 echo.
-echo 2. بناء الملف التنفيذي الخفيف المستقل...
-pyinstaller --noconfirm --onedir --windowed --name "MaktabatiPrintAgent" --add-data "config.json;." print_agent.py
+echo 2. بناء الملف التنفيذي المستقل (Single Executable)...
+pyinstaller --noconfirm --clean --onefile --noconsole --name "MaktabatiPrint" --add-binary "bin/SumatraPDF.exe;." main.py
+
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [خطأ] فشل بناء الملف التنفيذي!
+    pause
+    exit /b 1
+)
+
+echo.
+echo 3. نسخ البرنامج إلى مجلد تنزيلات الويب (web/public/downloads)...
+if not exist "..\web\public\downloads" mkdir "..\web\public\downloads"
+copy /y "dist\MaktabatiPrint.exe" "..\web\public\downloads\MaktabatiPrint.exe"
 
 echo.
 echo ========================================================
-echo  تم التجميع بنجاح!
-echo  الملف التنفيذي جاهز في المجلد:
-echo  print_agent\dist\MaktabatiPrintAgent\MaktabatiPrintAgent.exe
+echo  ✓ تم بناء وتجميع MaktabatiPrint.exe بنجاح تام!
+echo  المسار: print_agent\dist\MaktabatiPrint.exe
+echo  ورابط التنزيل المباشر: web\public\downloads\MaktabatiPrint.exe
 echo ========================================================
 echo.
-echo للتشغيل التلقائي مع إقلاع ويندوز:
-echo اضغط Win+R ثم اكتب shell:startup وانسخ اختصاراً للبرنامج هناك.
-echo ========================================================
 pause
