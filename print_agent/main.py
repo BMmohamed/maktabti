@@ -234,6 +234,9 @@ class PrintWorker(QThread):
 
         for idx, item in enumerate(items):
             file_url = item.get("download_url") or item.get("file_path")
+            if file_url:
+                file_url = file_url.replace("%09", "").replace("\t", "").strip()
+
             color_mode = item.get("color_mode", "bw")
             copies = int(item.get("copies_count") or 1)
             duplex = item.get("duplex", "simplex")

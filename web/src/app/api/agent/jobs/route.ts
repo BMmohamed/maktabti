@@ -77,6 +77,10 @@ export async function GET(request: NextRequest) {
               }
             }
 
+            if (downloadUrl) {
+              downloadUrl = downloadUrl.replace(/%09|\t|\r|\n/g, '').trim();
+            }
+
             return {
               id: item.id,
               item_title: item.item_title,
