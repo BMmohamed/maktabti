@@ -13,7 +13,7 @@ const NO_CACHE_HEADERS = {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: any }
 ) {
   const auth = await authenticateAgent(request);
 
@@ -24,7 +24,8 @@ export async function POST(
     );
   }
 
-  const orderId = params.id;
+  const resolvedParams = await Promise.resolve(context?.params || {});
+  const orderId = resolvedParams.id;
   if (!orderId) {
     return NextResponse.json(
       { error: 'معرف الطلب مطلوب' },

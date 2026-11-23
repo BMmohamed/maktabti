@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Store, QrCode, Download, Printer, Copy, Check, ExternalLink, Key, RefreshCw, MonitorDown, ShieldCheck, Sparkles } from 'lucide-react';
 import { ModuleRouteGuard } from '@/components/ModuleRouteGuard';
