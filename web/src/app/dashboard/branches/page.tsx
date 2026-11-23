@@ -104,14 +104,16 @@ export default function BranchesAdminPage() {
 
         <div className="flex flex-col items-center gap-2 shrink-0">
           <a
-            href="/downloads/MaktabatiPrint.exe"
+            href="https://github.com/BMmohamed/maktabti/releases/download/1.0.0/MaktabatiPrint.exe"
+            target="_blank"
+            rel="noopener noreferrer"
             download
             className="px-5 py-3 rounded-xl bg-brand-500 hover:bg-brand-400 text-white font-bold text-sm flex items-center gap-2 transition-all shadow-lg hover:shadow-brand-500/25 active:scale-95"
           >
             <MonitorDown className="w-5 h-5" />
             تحميل MaktabatiPrint.exe
           </a>
-          <span className="text-[10px] text-slate-400">حجم الملف ~28MB • لا يتطلب تثبيت</span>
+          <span className="text-[10px] text-slate-400">حجم الملف ~60MB • نسخة محمولة مستقلة</span>
         </div>
       </div>
 
